@@ -14,6 +14,11 @@ provider "azurerm" {
   features {}
 }
 
+variable script{
+  type = string
+  default = "../scripts/install-openFOAM.bash"
+}
+
 locals {
   prefix  = "cfd"
   ssh_key = sensitive(data.azurerm_key_vault_key.vm_key.public_key_openssh)
