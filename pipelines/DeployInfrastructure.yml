@@ -1,0 +1,72 @@
+trigger: none
+parameters:
+  - name: TerraformAction
+    type: string 
+    values:
+    - Plan
+    - Plan & Apply
+
+jobs:
+- job: initialize
+  displayName: Install TF, Init and Plan
+  pool:
+    name: MyAgentPool
+  steps:
+  - checkout: self
+
+  - task: TerraformInstaller@0
+    displayName: Install Terraform 1.2.5
+    inputs:
+      terraformVersion: 1.2.5
+
+  - task: TerraformTaskV3@3
+    displayName: 'Terraform : init'
+    inputs:
+      backendServiceArm: MySP-OpenFOAM
+      backendAzureRmResourceGroupName: terraform-rg
+      backendAzureRmStorageAccountName: tfstoraged80a0a9204004ee
+      backendAzureRmContainerName: tfstate-container
+      backendAzureRmKey: exp/openfoam.tfstate
+      workingDirectory: $(System.DefaultWorkingDirectory)/iac
+
+  - task: TerraformTaskV3@3
+    displayName: 'Terraform : plan'
+    inputs:
+      command: plan
+      environmentServiceNameAzureRM: MySP-OpenFOAM
+      backendServiceArm: MySP-OpenFOAM
+      backendAzureRmResourceGroupName: terraform-rg
+      backendAzureRmStorageAccountName: tfstoraged80a0a9204004ee
+      backendAzureRmContainerName: tfstate-container
+      backendAzureRmKey: exp/openfoam.tfstate      
+      workingDirectory: $(System.DefaultWorkingDirectory)/iac
+      commandOptions: '-out=$(System.DefaultWorkingDirectory)/terraform.tfplan'
+
+- ${{ if ne(parameters.terraformAction, 'Plan') }}:
+  - job: waitForValidation
+    displayName: Wait for external validation
+    pool: server
+    dependsOn: initialize
+    steps:
+    - task: ManualValidation@0
+      inputs:
+        instructions: 'Please validate the plan and apply'
+
+  - job: apply
+    displayName: Apply
+    pool:
+      name: MyAgentPool
+    dependsOn: waitForValidation
+    steps:
+    - checkout: none
+    - task: TerraformInstaller@0
+      displayName: Install Terraform 1.2.5
+      inputs:
+        terraformVersion: 1.2.5
+    - task: TerraformTaskV3@3
+      displayName: 'Terraform : apply'
+      inputs:
+        command: apply
+        environmentServiceNameAzureRM: MySP-OpenFOAM
+        commandOptions: $(System.DefaultWorkingDirectory)/terraform.tfplan
+        workingDirectory: $(System.DefaultWorkingDirectory)/iac
